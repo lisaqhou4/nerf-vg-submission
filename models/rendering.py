@@ -117,17 +117,18 @@ def render_rays(models,
 
         else: # infer rgb and sigma and others
             dir_embedded_ = repeat(dir_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            print("shape of embedding_outfits", embedding_outfits.shape)
-            outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
+            # print("shape of embedding_outfits", embedding_outfits.shape)
+            # outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             # create other necessary inputs
             if model.encode_appearance:
                 a_embedded_ = repeat(a_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
             if output_transient:
                 t_embedded_ = repeat(t_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            
+
             for i in range(0, B, chunk):
-                # inputs including outfit embedding
-                inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk], dir_embedded_[i:i+chunk]]
+                # Prepare chunked tensors for xyz and direction embeddings
+                xyz_chunk = embedding_xyz(xyz_[i:i+chunk])  # Shape: [chunk, xyz_dim]
+                dir_chunk = dir_embedded_[i:i+chunk]  # Shape: [chunk, dir_dim]
 
                 # print("shape of xyz_embedded:", embedding_xyz(xyz_[i:i+chunk]).shape)
                 # print("shape of outfit_embedded_:", outfit_embedded_.shape)
