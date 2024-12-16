@@ -38,17 +38,21 @@ def get_opts():
                         help='std dev of noise added to regularize sigma')
 
     # NeRF-W parameters
-    parser.add_argument('--N_vocab', type=int, default=100,
+    parser.add_argument('--N_vocab', type=int, default=700,
                         help='''number of vocabulary (number of images) 
                                 in the dataset for nn.Embedding''')
     parser.add_argument('--encode_a', default=False, action="store_true",
                         help='whether to encode appearance (NeRF-A)')
     parser.add_argument('--N_a', type=int, default=48,
                         help='number of embeddings for appearance')
-    parser.add_argument('--encode_t', default=False, action="store_true",
-                        help='whether to encode transient object (NeRF-U)')
-    parser.add_argument('--N_tau', type=int, default=16,
-                        help='number of embeddings for transient objects')
+#     parser.add_argument('--encode_t', default=False, action="store_true",
+#                         help='whether to encode transient object (NeRF-U)')
+#     parser.add_argument('--N_tau', type=int, default=16,
+#                         help='number of embeddings for transient objects')
+    parser.add_argument('--N_outfit', type=int, default=2,
+                        help='number of outfits')
+    parser.add_argument('--encode_outfit', default=False, action="store_true",
+                        help='whether to encode outfit')
     parser.add_argument('--beta_min', type=float, default=0.1,
                         help='minimum color variance for each ray')
 
