@@ -36,7 +36,8 @@ class NeRF(nn.Module):
                  in_channels_xyz=63, in_channels_dir=27,
                  encode_appearance=False, in_channels_a=48,
                  encode_transient=False, in_channels_t=16,
-                 beta_min=0.03, in_channels=64):
+                 beta_min=0.03, 
+                 encode_outfit=False, in_channels_o=64):
         """
         ---Parameters for the original NeRF---
         D: number of layers for density (sigma) encoder
@@ -71,14 +72,14 @@ class NeRF(nn.Module):
         self.in_channels_t = in_channels_t
         self.beta_min = beta_min
 
-        self.in_channels_o = in_channels # outfit embedding 
+        self.in_channels_o = in_channels_o if encode_outfit else 0 # outfit embedding 
 
         # xyz encoding layers
         for i in range(D):
             if i == 0:
-                layer = nn.Linear(in_channels_xyz+in_channels, W)
+                layer = nn.Linear(in_channels_xyz + in_channels_o, W)
             elif i in skips:
-                layer = nn.Linear(W+in_channels_xyz+in_channels, W)
+                layer = nn.Linear(W+in_channels_xyz + in_channels_o, W)
             else:
                 layer = nn.Linear(W, W)
             layer = nn.Sequential(layer, nn.ReLU(True))

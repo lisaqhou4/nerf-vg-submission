@@ -64,7 +64,8 @@ class NeRFSystem(LightningModule):
                                   in_channels_a=hparams.N_a,
                                   encode_transient=hparams.encode_t,
                                   in_channels_t=hparams.N_tau,
-                                  beta_min=hparams.beta_min)
+                                  beta_min=hparams.beta_min,
+                                  encode_outfit=hparams.encode_outfit, in_channels_o=hparams.N_a)
             self.models['fine'] = self.nerf_fine
         self.models_to_train += [self.models]
 
@@ -156,6 +157,7 @@ class NeRFSystem(LightningModule):
         rays = rays.squeeze() # (H*W, 3)
         rgbs = rgbs.squeeze() # (H*W, 3)
         ts = ts.squeeze() # (H*W)
+        # outfit_code = outfit_code.squeeze()
         results = self(rays, ts, outfit_code)
         loss_d = self.loss(results, rgbs)
         loss = sum(l for l in loss_d.values())
