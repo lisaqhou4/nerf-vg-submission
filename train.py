@@ -28,7 +28,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 class NeRFSystem(LightningModule):
     def __init__(self, hparams):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(vars(hparams))
 
         # self.validation_step_outputs = []
         self.loss = loss_dict['nerfw'](coef=1)
@@ -53,6 +53,7 @@ class NeRFSystem(LightningModule):
             self.models_to_train += [self.embedding_outfit]
 
         self.nerf_coarse = NeRF('coarse',
+                                encode_outfit=hparams.encode_outfit,
                                 in_channels_xyz=6*hparams.N_emb_xyz+3,
                                 in_channels_dir=6*hparams.N_emb_dir+3)
         self.models = {'coarse': self.nerf_coarse}
@@ -157,7 +158,6 @@ class NeRFSystem(LightningModule):
         rays = rays.squeeze() # (H*W, 3)
         rgbs = rgbs.squeeze() # (H*W, 3)
         ts = ts.squeeze() # (H*W)
-        # outfit_code = outfit_code.squeeze()
         results = self(rays, ts, outfit_code)
         loss_d = self.loss(results, rgbs)
         loss = sum(l for l in loss_d.values())

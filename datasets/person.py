@@ -82,7 +82,7 @@ class PersonDataset(Dataset):
                 outfit_code = frame['outfit_code']
                 
                 image_path = os.path.join(self.root_dir, frame["file_path"])
-                print("image_path from person dataset:", image_path)
+                # print("image_path from person dataset:", image_path)
                 img = Image.open(image_path)
                 # if t != 0: # perturb everything except the first image.
                 #            # cf. Section D in the supplementary material
@@ -140,12 +140,12 @@ class PersonDataset(Dataset):
                     }
 
         else: # create data for each image separately
-            print("getitem, self.split != train")
+            print("getitem, self.split != train", self.split)
             frame = self.meta['frames'][idx]
             c2w = torch.FloatTensor(frame['transform_matrix'])[:3, :4]
             t = 0 # transient embedding index, 0 for val and test (no perturbation)
 
-            img = Image.open(os.path.join(self.root_dir, f"{frame['file_path']}.png"))
+            img = Image.open(os.path.join(self.root_dir, frame["file_path"]))
             # if self.split == 'test_train' and idx != 0:
             #     t = idx
             #     img = add_perturbation(img, self.perturbation, idx)
@@ -162,11 +162,10 @@ class PersonDataset(Dataset):
                               self.far*torch.ones_like(rays_o[:, :1])],
                               1) # (H*W, 8)
 
-            outfit_code = frame['outfit_code']
             sample = {'rays': rays,
                       'ts': t * torch.ones(len(rays), dtype=torch.long),
                       'rgbs': img,
-                      'outfit_code': outfit_code,
+                      'outfit_code': frame['outfit_code'] * torch.ones(len(rays), dtype=torch.long),
                       'c2w': c2w,
                       'valid_mask': valid_mask}
 

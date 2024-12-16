@@ -117,7 +117,7 @@ def render_rays(models,
 
         else: # infer rgb and sigma and others
             dir_embedded_ = repeat(dir_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            
+            print("shape of embedding_outfits", embedding_outfits.shape)
             outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             # create other necessary inputs
             if model.encode_appearance:
@@ -127,13 +127,20 @@ def render_rays(models,
             
             for i in range(0, B, chunk):
                 # inputs including outfit embedding
-                inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_, dir_embedded_[i:i+chunk]]
+                inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk], dir_embedded_[i:i+chunk]]
 
+                print("shape of xyz_embedded:", embedding_xyz(xyz_[i:i+chunk]).shape)
+                print("shape of outfit_embedded_:", outfit_embedded_.shape)
+                print("shape of dir_embedded_:", dir_embedded_[i:i+chunk].shape)
                 
                 # additional inputs for NeRF-W
                 if model.encode_appearance:
                     inputs += [a_embedded_[i:i+chunk]]
+                    print("a_embedded_:", a_embedded_[i:i+chunk])
+                    print("shape of a_embedded_:", a_embedded_[i:i+chunk].shape)
                 if output_transient:
+                    print("t_embedded_:", t_embedded_[i:i+chunk])
+                    print("shape of t_embedded_:", t_embedded_[i:i+chunk].shape)
                     inputs += [t_embedded_[i:i+chunk]]
                 out_chunks += [model(torch.cat(inputs, 1), output_transient=output_transient)]
 
@@ -242,7 +249,12 @@ def render_rays(models,
         results[f'depth_{typ}'] = reduce(weights*z_vals, 'n1 n2 -> n1', 'sum')
         return
 
-    embedding_xyz, embedding_dir, embedding_outfits = embeddings['xyz'], embeddings['dir'], embeddings["outfit"][outfit_code]
+    print("outfit_code:", outfit_code)
+    print("outfit_code type:", type(outfit_code))
+    print("outfit_code shape:", outfit_code.shape)
+    print("shape of outfit_code:", embeddings["outfit"](outfit_code).shape)
+    outfit_code = outfit_code.squeeze()
+    embedding_xyz, embedding_dir, embedding_outfits = embeddings['xyz'], embeddings['dir'], embeddings["outfit"](outfit_code)
 
     # Decompose the inputs
     N_rays = rays.shape[0]

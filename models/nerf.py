@@ -35,9 +35,9 @@ class NeRF(nn.Module):
                  D=8, W=256, skips=[4],
                  in_channels_xyz=63, in_channels_dir=27,
                  encode_appearance=False, in_channels_a=48,
-                 encode_transient=False, in_channels_t=16,
+                 encode_transient=False, in_channels_t=48,
                  beta_min=0.03, 
-                 encode_outfit=False, in_channels_o=64):
+                 encode_outfit=False, in_channels_o=48):
         """
         ---Parameters for the original NeRF---
         D: number of layers for density (sigma) encoder
@@ -134,6 +134,11 @@ class NeRF(nn.Module):
                                 self.in_channels_dir+self.in_channels_a,
                                 self.in_channels_t], dim=-1)
         else:
+            print("shape of x:", x.shape)
+            print("inchannels_xyz", self.in_channels_xyz)
+            print("inchannels_o", self.in_channels_o)
+            print("inchannels_dir", self.in_channels_dir)
+            print("inchannels_a", self.in_channels_a)
             input_xyz, input_dir_a = \
                 torch.split(x, [self.in_channels_xyz+self.in_channels_o,
                                 self.in_channels_dir+self.in_channels_a], dim=-1)
