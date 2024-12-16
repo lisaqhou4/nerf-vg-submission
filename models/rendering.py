@@ -50,7 +50,7 @@ def render_rays(models,
                 embeddings,
                 rays,
                 ts,
-                outfit_indices,
+                outfit_code,
                 N_samples=64,
                 use_disp=False,
                 perturb=0,
@@ -144,7 +144,7 @@ def render_rays(models,
             #extract outputs
             static_rgbs = out[..., :3] # (N_rays, N_samples_, 3)
             static_sigmas = out[..., 3] # (N_rays, N_samples_)
-            
+
             if output_transient:
                 transient_rgbs = out[..., 4:7]
                 transient_sigmas = out[..., 7]
@@ -242,7 +242,7 @@ def render_rays(models,
         results[f'depth_{typ}'] = reduce(weights*z_vals, 'n1 n2 -> n1', 'sum')
         return
 
-    embedding_xyz, embedding_dir, embedding_outfits = embeddings['xyz'], embeddings['dir'], embeddings["outfit"][outfit_indices]
+    embedding_xyz, embedding_dir, embedding_outfits = embeddings['xyz'], embeddings['dir'], embeddings["outfit"][outfit_code]
 
     # Decompose the inputs
     N_rays = rays.shape[0]
