@@ -73,7 +73,7 @@ class NeRFSystem(LightningModule):
         items.pop("v_num", None)
         return items
 
-    def forward(self, rays, ts):
+    def forward(self, rays, ts, outfit_code):
         """Do batched inference on rays using chunk."""
         B = rays.shape[0]
         results = defaultdict(list)
@@ -83,6 +83,7 @@ class NeRFSystem(LightningModule):
                             self.embeddings,
                             rays[i:i+self.hparams.chunk],
                             ts[i:i+self.hparams.chunk],
+                            outfit_code[i:i+self.hparams.chunk], 
                             self.hparams.N_samples,
                             self.hparams.use_disp,
                             self.hparams.perturb,
@@ -131,8 +132,10 @@ class NeRFSystem(LightningModule):
                           pin_memory=True)
     
     def training_step(self, batch, batch_nb):
-        rays, rgbs, ts = batch['rays'], batch['rgbs'], batch['ts']
-        results = self(rays, ts)
+        rays, rgbs, ts, outfit_code = batch['rays'], batch['rgbs'], batch['ts'], batch['outfit_code']
+        print("outfit_code:", outfit_code)
+        print("type of outfit_code:", type(outfit_code))
+        results = self(rays, ts, outfit_code)
         loss_d = self.loss(results, rgbs)
         loss = sum(l for l in loss_d.values())
 
@@ -149,11 +152,11 @@ class NeRFSystem(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_nb):
-        rays, rgbs, ts = batch['rays'], batch['rgbs'], batch['ts']
+        rays, rgbs, ts, outfit_code = batch['rays'], batch['rgbs'], batch['ts'], batch['outfit_code']
         rays = rays.squeeze() # (H*W, 3)
         rgbs = rgbs.squeeze() # (H*W, 3)
         ts = ts.squeeze() # (H*W)
-        results = self(rays, ts)
+        results = self(rays, ts, outfit_code)
         loss_d = self.loss(results, rgbs)
         loss = sum(l for l in loss_d.values())
         log = {'val_loss': loss}

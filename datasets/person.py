@@ -75,12 +75,14 @@ class PersonDataset(Dataset):
         if self.split == 'train': # create buffer of all rays and rgb data
             self.all_rays = []
             self.all_rgbs = []
+            self.all_outfit_codes = []
             for t, frame in enumerate(self.meta['frames']):
                 pose = np.array(frame['transform_matrix'])[:3, :4]
                 c2w = torch.FloatTensor(pose)
-
+                outfit_code = frame['outfit_code']
+                
                 image_path = os.path.join(self.root_dir, frame["file_path"])
-                print(image_path)
+                print("image_path from person dataset:", image_path)
                 img = Image.open(image_path)
                 # if t != 0: # perturb everything except the first image.
                 #            # cf. Section D in the supplementary material
@@ -111,11 +113,13 @@ class PersonDataset(Dataset):
                     self.far * torch.ones_like(rays_o[:, :1])   # Far bounds
                 ], 1)  # (H*W, 8)
                 self.all_rays.append(rays)
+                outfit_code_tensor = outfit_code * torch.ones(len(rays), 1, dtype=torch.long)
+                self.all_outfit_codes.append(outfit_code_tensor)
 
             # Concatenate all rays and RGB values
             self.all_rays = torch.cat(self.all_rays, 0)  # (N_images*H*W, 8)
             self.all_rgbs = torch.cat(self.all_rgbs, 0)  # (N_images*H*W, 3)
-
+            self.all_outfit_codes = torch.cat(self.all_outfit_codes, 0)  # (N_images*H*W, 1)
 
     def define_transforms(self):
         self.transform = T.ToTensor()
@@ -131,36 +135,40 @@ class PersonDataset(Dataset):
         if self.split == 'train': # use data in the buffers
             sample = {'rays': self.all_rays[idx, :8],
                       'ts': self.all_rays[idx, 8].long(),
-                      'rgbs': self.all_rgbs[idx]}
+                      'rgbs': self.all_rgbs[idx],
+                      'outfit_code': self.all_outfit_codes[idx] # (1,)
+                    }
 
         else: # create data for each image separately
             print("getitem, self.split != train")
-            # frame = self.meta['frames'][idx]
-            # c2w = torch.FloatTensor(frame['transform_matrix'])[:3, :4]
-            # t = 0 # transient embedding index, 0 for val and test (no perturbation)
+            frame = self.meta['frames'][idx]
+            c2w = torch.FloatTensor(frame['transform_matrix'])[:3, :4]
+            t = 0 # transient embedding index, 0 for val and test (no perturbation)
 
-            # img = Image.open(os.path.join(self.root_dir, f"{frame['file_path']}.png"))
+            img = Image.open(os.path.join(self.root_dir, f"{frame['file_path']}.png"))
             # if self.split == 'test_train' and idx != 0:
             #     t = idx
             #     img = add_perturbation(img, self.perturbation, idx)
-            # img = img.resize(self.img_wh, Image.LANCZOS)
-            # img = self.transform(img) # (4, H, W)
-            # valid_mask = (img[-1]>0).flatten() # (H*W) valid color area
-            # img = img.view(4, -1).permute(1, 0) # (H*W, 4) RGBA
-            # img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
+            img = img.resize(self.img_wh, Image.LANCZOS)
+            img = self.transform(img) # (4, H, W)
+            valid_mask = (img[-1]>0).flatten() # (H*W) valid color area
+            img = img.view(4, -1).permute(1, 0) # (H*W, 4) RGBA
+            img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
 
-            # rays_o, rays_d = get_rays(self.directions, c2w)
+            rays_o, rays_d = get_rays(self.directions, c2w)
 
-            # rays = torch.cat([rays_o, rays_d, 
-            #                   self.near*torch.ones_like(rays_o[:, :1]),
-            #                   self.far*torch.ones_like(rays_o[:, :1])],
-            #                   1) # (H*W, 8)
+            rays = torch.cat([rays_o, rays_d, 
+                              self.near*torch.ones_like(rays_o[:, :1]),
+                              self.far*torch.ones_like(rays_o[:, :1])],
+                              1) # (H*W, 8)
 
-            # sample = {'rays': rays,
-            #           'ts': t * torch.ones(len(rays), dtype=torch.long),
-            #           'rgbs': img,
-            #           'c2w': c2w,
-            #           'valid_mask': valid_mask}
+            outfit_code = frame['outfit_code']
+            sample = {'rays': rays,
+                      'ts': t * torch.ones(len(rays), dtype=torch.long),
+                      'rgbs': img,
+                      'outfit_code': outfit_code,
+                      'c2w': c2w,
+                      'valid_mask': valid_mask}
 
             # if self.split == 'test_train' and self.perturbation:
             #      # append the original (unperturbed) image
