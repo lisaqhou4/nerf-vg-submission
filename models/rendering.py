@@ -117,32 +117,57 @@ def render_rays(models,
 
         else: # infer rgb and sigma and others
             dir_embedded_ = repeat(dir_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            print("shape of embedding_outfits", embedding_outfits.shape)
-            outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
+            # print("shape of embedding_outfits", embedding_outfits.shape)
+            # outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             # create other necessary inputs
             if model.encode_appearance:
                 a_embedded_ = repeat(a_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
             if output_transient:
                 t_embedded_ = repeat(t_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            
-            for i in range(0, B, chunk):
-                # inputs including outfit embedding
-                inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk], dir_embedded_[i:i+chunk]]
 
-                print("shape of xyz_embedded:", embedding_xyz(xyz_[i:i+chunk]).shape)
-                print("shape of outfit_embedded_:", outfit_embedded_.shape)
-                print("shape of dir_embedded_:", dir_embedded_[i:i+chunk].shape)
-                
-                # additional inputs for NeRF-W
+            for i in range(0, B, chunk):
+                # Prepare chunked tensors for xyz and direction embeddings
+                xyz_chunk = embedding_xyz(xyz_[i:i+chunk])  # Shape: [chunk, xyz_dim]
+                dir_chunk = dir_embedded_[i:i+chunk]  # Shape: [chunk, dir_dim]
+
+                # Generate outfit embeddings on-the-fly
+                outfit_chunk = embedding_outfits[i // N_samples_: (i + chunk) // N_samples_]  # [n_rays_in_chunk, outfit_dim]
+                print("outfit_chunk shape before:", outfit_chunk.shape)
+                outfit_chunk = repeat(outfit_chunk, 'n1 c -> (n1 n2) c', n2=N_samples_)  # Repeat only within this chunk
+                print("outfit_chunk shape before:", outfit_chunk.shape)
+
+                # Concatenate inputs
+                inputs = [xyz_chunk, outfit_chunk, dir_chunk]
+
+                # Additional inputs for NeRF-W
                 if model.encode_appearance:
-                    inputs += [a_embedded_[i:i+chunk]]
-                    print("a_embedded_:", a_embedded_[i:i+chunk])
-                    print("shape of a_embedded_:", a_embedded_[i:i+chunk].shape)
+                    a_embedded_chunk = a_embedded_[i:i+chunk]
+                    inputs += [a_embedded_chunk]
                 if output_transient:
-                    print("t_embedded_:", t_embedded_[i:i+chunk])
-                    print("shape of t_embedded_:", t_embedded_[i:i+chunk].shape)
-                    inputs += [t_embedded_[i:i+chunk]]
-                out_chunks += [model(torch.cat(inputs, 1), output_transient=output_transient)]
+                    t_embedded_chunk = t_embedded_[i:i+chunk]
+                    inputs += [t_embedded_chunk]
+
+                # Forward pass
+                out_chunks += [model(torch.cat(inputs, dim=-1), output_transient=output_transient)]
+
+            # for i in range(0, B, chunk):
+            #     # inputs including outfit embedding
+            #     inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk], dir_embedded_[i:i+chunk]]
+
+            #     # print("shape of xyz_embedded:", embedding_xyz(xyz_[i:i+chunk]).shape)
+            #     # print("shape of outfit_embedded_:", outfit_embedded_.shape)
+            #     # print("shape of dir_embedded_:", dir_embedded_[i:i+chunk].shape)
+                
+            #     # additional inputs for NeRF-W
+            #     if model.encode_appearance:
+            #         inputs += [a_embedded_[i:i+chunk]]
+            #         print("a_embedded_:", a_embedded_[i:i+chunk])
+            #         print("shape of a_embedded_:", a_embedded_[i:i+chunk].shape)
+            #     if output_transient:
+            #         print("t_embedded_:", t_embedded_[i:i+chunk])
+            #         print("shape of t_embedded_:", t_embedded_[i:i+chunk].shape)
+            #         inputs += [t_embedded_[i:i+chunk]]
+            #     out_chunks += [model(torch.cat(inputs, 1), output_transient=output_transient)]
 
             #reshape outputs
             out = torch.cat(out_chunks, 0)
