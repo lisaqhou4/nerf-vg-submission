@@ -117,7 +117,7 @@ def render_rays(models,
 
         else: # infer rgb and sigma and others
             dir_embedded_ = repeat(dir_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            print("shape of embedding_outfits", embedding_outfits.shape)
+            # print("shape of embedding_outfits", embedding_outfits.shape)
             outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             # create other necessary inputs
             if model.encode_appearance:
@@ -294,7 +294,7 @@ def render_rays(models,
     inference(results, models['coarse'], xyz_coarse, z_vals, test_time, **kwargs)
 
     if N_importance > 0: # sample points for fine model
-        print("Start fine training")
+        # print("Start fine training")
         z_vals_mid = 0.5 * (z_vals[: ,:-1] + z_vals[: ,1:]) # (N_rays, N_samples-1) interval mid points
         z_vals_ = sample_pdf(z_vals_mid, results['weights_coarse'][:, 1:-1].detach(),
                              N_importance, det=(perturb==0))

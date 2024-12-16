@@ -134,11 +134,11 @@ class NeRF(nn.Module):
                                 self.in_channels_dir+self.in_channels_a,
                                 self.in_channels_t], dim=-1)
         else:
-            print("shape of x:", x.shape)
-            print("inchannels_xyz", self.in_channels_xyz)
-            print("inchannels_o", self.in_channels_o)
-            print("inchannels_dir", self.in_channels_dir)
-            print("inchannels_a", self.in_channels_a)
+            # print("shape of x:", x.shape)
+            # print("inchannels_xyz", self.in_channels_xyz)
+            # print("inchannels_o", self.in_channels_o)
+            # print("inchannels_dir", self.in_channels_dir)
+            # print("inchannels_a", self.in_channels_a)
             input_xyz, input_dir_a = \
                 torch.split(x, [self.in_channels_xyz+self.in_channels_o,
                                 self.in_channels_dir+self.in_channels_a], dim=-1)
