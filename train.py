@@ -28,7 +28,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 class NeRFSystem(LightningModule):
     def __init__(self, hparams):
         super().__init__()
-        self.hparams = hparams
+        self.save_hyperparameters()
 
         # self.validation_step_outputs = []
         self.loss = loss_dict['nerfw'](coef=1)
@@ -64,7 +64,8 @@ class NeRFSystem(LightningModule):
                                   in_channels_a=hparams.N_a,
                                   encode_transient=hparams.encode_t,
                                   in_channels_t=hparams.N_tau,
-                                  beta_min=hparams.beta_min)
+                                  beta_min=hparams.beta_min,
+                                  encode_outfit=hparams.encode_outfit, in_channels_o=hparams.N_a)
             self.models['fine'] = self.nerf_fine
         self.models_to_train += [self.models]
 
@@ -161,41 +162,48 @@ class NeRFSystem(LightningModule):
         loss = sum(l for l in loss_d.values())
         log = {'val_loss': loss}
         typ = 'fine' if 'rgb_fine' in results else 'coarse'
-    
-        if batch_nb == 0:
-            if self.hparams.dataset_name == 'phototourism':
-                WH = batch['img_wh']
-                W, H = WH[0, 0].item(), WH[0, 1].item()
-            else:
-                W, H = self.hparams.img_wh
-            img = results[f'rgb_{typ}'].view(H, W, 3).permute(2, 0, 1).cpu() # (3, H, W)
-            img_gt = rgbs.view(H, W, 3).permute(2, 0, 1).cpu() # (3, H, W)
-            depth = visualize_depth(results[f'depth_{typ}'].view(H, W)) # (3, H, W)
-            stack = torch.stack([img_gt, img, depth]) # (3, 3, H, W)
-            self.logger.experiment.add_images('val/GT_pred_depth',
-                                               stack, self.global_step)
 
         psnr_ = psnr(results[f'rgb_{typ}'], rgbs)
-        log['val_psnr'] = psnr_
+        self.validation_outputs.append({'val_loss': loss, 'val_psnr': psnr_})
 
-        return log
+        if batch_nb == 0:
+            W, H = self.hparams.img_wh
+            img = results[f'rgb_{typ}'].view(H, W, 3).permute(2, 0, 1).cpu()  # (3, H, W)
+            img_gt = rgbs.view(H, W, 3).permute(2, 0, 1).cpu()  # (3, H, W)
+            depth = visualize_depth(results[f'depth_{typ}'].view(H, W))  # (3, H, W)
+            stack = torch.stack([img_gt, img, depth])  # (3, 3, H, W)
+            self.logger.experiment.add_images('val/GT_pred_depth', stack, self.global_step)
 
-    def validation_epoch_end(self, outputs):
-        mean_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        mean_psnr = torch.stack([x['val_psnr'] for x in outputs]).mean()
+        return loss
 
-        self.log('val/loss', mean_loss)
+    def on_validation_epoch_end(self):
+        # Aggregate validation outputs
+        mean_loss = torch.stack([x['val_loss'] for x in self.validation_outputs]).mean()
+        mean_psnr = torch.stack([x['val_psnr'] for x in self.validation_outputs]).mean()
+
+        # Log aggregated metrics
+        self.log('val/loss', mean_loss, prog_bar=True)
         self.log('val/psnr', mean_psnr, prog_bar=True)
+
+        # Clear the outputs for the next epoch
+        self.validation_outputs.clear()
 
 
 def main(hparams):
     system = NeRFSystem(hparams)
-    checkpoint_callback = \
-        ModelCheckpoint(filepath=os.path.join(f'ckpts/{hparams.exp_name}',
-                                               '{epoch:d}'),
-                        monitor='val/psnr',
-                        mode='max',
-                        save_top_k=-1)
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=os.path.join('ckpts', hparams.exp_name),  # Directory to save checkpoints
+        filename='{epoch:d}',  # Format for checkpoint filenames
+        monitor='val/psnr',    # Metric to monitor
+        mode='max',            # Save the checkpoint with the maximum val/psnr
+        save_top_k=-1          # Save all checkpoints
+    )
+    
+    # Define logger
+    logger = TensorBoardLogger(
+        save_dir='logs',
+        name=hparams.exp_name
+    )
 
     trainer = Trainer(
         max_epochs=hparams.num_epochs,
@@ -213,4 +221,5 @@ def main(hparams):
 
 if __name__ == '__main__':
     hparams = get_opts()
+    print(hparams)
     main(hparams)
