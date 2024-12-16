@@ -129,18 +129,18 @@ def render_rays(models,
                 # inputs including outfit embedding
                 inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk], dir_embedded_[i:i+chunk]]
 
-                print("shape of xyz_embedded:", embedding_xyz(xyz_[i:i+chunk]).shape)
-                print("shape of outfit_embedded_:", outfit_embedded_.shape)
-                print("shape of dir_embedded_:", dir_embedded_[i:i+chunk].shape)
+                # print("shape of xyz_embedded:", embedding_xyz(xyz_[i:i+chunk]).shape)
+                # print("shape of outfit_embedded_:", outfit_embedded_.shape)
+                # print("shape of dir_embedded_:", dir_embedded_[i:i+chunk].shape)
                 
                 # additional inputs for NeRF-W
                 if model.encode_appearance:
                     inputs += [a_embedded_[i:i+chunk]]
-                    print("a_embedded_:", a_embedded_[i:i+chunk])
-                    print("shape of a_embedded_:", a_embedded_[i:i+chunk].shape)
+                    # print("a_embedded_:", a_embedded_[i:i+chunk])
+                    # print("shape of a_embedded_:", a_embedded_[i:i+chunk].shape)
                 if output_transient:
-                    print("t_embedded_:", t_embedded_[i:i+chunk])
-                    print("shape of t_embedded_:", t_embedded_[i:i+chunk].shape)
+                    # print("t_embedded_:", t_embedded_[i:i+chunk])
+                    # print("shape of t_embedded_:", t_embedded_[i:i+chunk].shape)
                     inputs += [t_embedded_[i:i+chunk]]
                 out_chunks += [model(torch.cat(inputs, 1), output_transient=output_transient)]
 
@@ -249,11 +249,13 @@ def render_rays(models,
         results[f'depth_{typ}'] = reduce(weights*z_vals, 'n1 n2 -> n1', 'sum')
         return
 
-    print("outfit_code:", outfit_code)
-    print("outfit_code type:", type(outfit_code))
-    print("outfit_code shape:", outfit_code.shape)
-    print("shape of outfit_code:", embeddings["outfit"](outfit_code).shape)
+    # print("outfit_code:", outfit_code)
+    # print("outfit_code type:", type(outfit_code))
+    # print("outfit_code shape:", outfit_code.shape)
+    # print("shape of embeddings[outfit](outfit_code)", embeddings["outfit"](outfit_code).shape)
     outfit_code = outfit_code.squeeze()
+    # print("outfit_code shape after squeeze:", outfit_code.shape)
+    # print("shape of embeddings[outfit](outfit_code) after squeeze", embeddings["outfit"](outfit_code).shape)
     embedding_xyz, embedding_dir, embedding_outfits = embeddings['xyz'], embeddings['dir'], embeddings["outfit"](outfit_code)
 
     # Decompose the inputs
@@ -292,6 +294,7 @@ def render_rays(models,
     inference(results, models['coarse'], xyz_coarse, z_vals, test_time, **kwargs)
 
     if N_importance > 0: # sample points for fine model
+        print("Start fine training")
         z_vals_mid = 0.5 * (z_vals[: ,:-1] + z_vals[: ,1:]) # (N_rays, N_samples-1) interval mid points
         z_vals_ = sample_pdf(z_vals_mid, results['weights_coarse'][:, 1:-1].detach(),
                              N_importance, det=(perturb==0))
@@ -311,6 +314,7 @@ def render_rays(models,
                 t_embedded = kwargs['t_embedded']
             else:
                 t_embedded = embeddings['t'](ts)
+        
         inference(results, model, xyz_fine, z_vals, test_time, **kwargs)
 
     return results

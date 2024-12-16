@@ -123,14 +123,20 @@ class BlenderDataset(Dataset):
             t = 0 # transient embedding index, 0 for val and test (no perturbation)
 
             img = Image.open(os.path.join(self.root_dir, f"{frame['file_path']}.png"))
+            print("shape of img after opening:", np.array(img).shape)
             if self.split == 'test_train' and idx != 0:
                 t = idx
                 img = add_perturbation(img, self.perturbation, idx)
             img = img.resize(self.img_wh, Image.LANCZOS)
+            print("shape of img after resizing:", img.shape)
             img = self.transform(img) # (4, H, W)
+            print("shape of img after transforming:", img.shape)
             valid_mask = (img[-1]>0).flatten() # (H*W) valid color area
+            print("shape of valid_mask:", valid_mask.shape)
             img = img.view(4, -1).permute(1, 0) # (H*W, 4) RGBA
+            print("shape of img after reshaping:", img.shape)
             img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
+            print("shape of img after blending:", img.shape)
 
             rays_o, rays_d = get_rays(self.directions, c2w)
 
