@@ -14,6 +14,9 @@ class ColorLoss(nn.Module):
 
         return self.coef * loss
 
+#TO-DO 
+# redine losses
+
 
 class NerfWLoss(nn.Module):
     """
