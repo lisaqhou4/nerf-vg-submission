@@ -50,6 +50,7 @@ def render_rays(models,
                 embeddings,
                 rays,
                 ts,
+                outfit_indices,
                 N_samples=64,
                 use_disp=False,
                 perturb=0,
@@ -76,6 +77,8 @@ def render_rays(models,
         white_back: whether the background is white (dataset dependent)
         test_time: whether it is test (inference only) or not. If True, it will not do inference
                    on coarse rgb to save time
+     ------- added -------------
+        outfit_embeddings: the outfit embedding corresponding to current batch
     Outputs:
         result: dictionary containing final rgb and depth maps for coarse and fine models
     """
@@ -93,29 +96,40 @@ def render_rays(models,
             z_vals: (N_rays, N_samples_) depths of the sampled positions
             test_time: test time or not
         """
+        #preprocessing inputs
         typ = model.typ
         N_samples_ = xyz.shape[1]
-        xyz_ = rearrange(xyz, 'n1 n2 c -> (n1 n2) c', c=3)
+        xyz_ = rearrange(xyz, 'n1 n2 c -> (n1 n2) c', c=3) #flatten the samples
 
         # Perform model inference to get rgb and raw sigma
         B = xyz_.shape[0]
         out_chunks = []
-        if typ=='coarse' and test_time:
+
+        #TO-DO modification for our nerf model that have variable geometry
+        if typ=='coarse' and test_time: #test time, only infer sigma
+            #TO-DO do i add outfit embedding here?
             for i in range(0, B, chunk):
                 xyz_embedded = embedding_xyz(xyz_[i:i+chunk])
                 out_chunks += [model(xyz_embedded, sigma_only=True)]
             out = torch.cat(out_chunks, 0)
+            
             static_sigmas = rearrange(out, '(n1 n2) 1 -> n1 n2', n1=N_rays, n2=N_samples_)
+
         else: # infer rgb and sigma and others
             dir_embedded_ = repeat(dir_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
+            
+            outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             # create other necessary inputs
             if model.encode_appearance:
                 a_embedded_ = repeat(a_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
             if output_transient:
                 t_embedded_ = repeat(t_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
+            
             for i in range(0, B, chunk):
-                # inputs for original NeRF
-                inputs = [embedding_xyz(xyz_[i:i+chunk]), dir_embedded_[i:i+chunk]]
+                # inputs including outfit embedding
+                inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_, dir_embedded_[i:i+chunk]]
+
+                
                 # additional inputs for NeRF-W
                 if model.encode_appearance:
                     inputs += [a_embedded_[i:i+chunk]]
@@ -123,10 +137,14 @@ def render_rays(models,
                     inputs += [t_embedded_[i:i+chunk]]
                 out_chunks += [model(torch.cat(inputs, 1), output_transient=output_transient)]
 
+            #reshape outputs
             out = torch.cat(out_chunks, 0)
             out = rearrange(out, '(n1 n2) c -> n1 n2 c', n1=N_rays, n2=N_samples_)
+
+            #extract outputs
             static_rgbs = out[..., :3] # (N_rays, N_samples_, 3)
             static_sigmas = out[..., 3] # (N_rays, N_samples_)
+            
             if output_transient:
                 transient_rgbs = out[..., 4:7]
                 transient_sigmas = out[..., 7]
@@ -137,6 +155,9 @@ def render_rays(models,
         delta_inf = 1e2 * torch.ones_like(deltas[:, :1]) # (N_rays, 1) the last delta is infinity
         deltas = torch.cat([deltas, delta_inf], -1)  # (N_rays, N_samples_)
 
+        # calculate opacities
+        # the alpah function which is alpha_i(x) = 1 - exp(-x)
+        # static sigmas is the  density sigma, deltas is the distance between samples
         if output_transient:
             static_alphas = 1-torch.exp(-deltas*static_sigmas)
             transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
@@ -145,6 +166,7 @@ def render_rays(models,
 #             noise = torch.randn_like(static_sigmas) * noise_std
             alphas = 1-torch.exp(-deltas*static_sigmas)
 
+        # calculate transmittance
         alphas_shifted = \
             torch.cat([torch.ones_like(alphas[:, :1]), 1-alphas], -1) # [1, 1-a1, 1-a2, ...]
         transmittance = torch.cumprod(alphas_shifted[:, :-1], -1) # [1, 1-a1, (1-a1)(1-a2), ...]
@@ -173,6 +195,7 @@ def render_rays(models,
             transient_rgb_map = \
                 reduce(rearrange(transient_weights, 'n1 n2 -> n1 n2 1')*transient_rgbs,
                        'n1 n2 c -> n1 c', 'sum')
+            #If transient fields exist, calculate the uncertainty (beta) for transient components by summing weighted uncertainties:
             results['beta'] = reduce(transient_weights*transient_betas, 'n1 n2 -> n1', 'sum')
             # Add beta_min AFTER the beta composition. Different from eq 10~12 in the paper.
             # See "Notes on differences with the paper" in README.
@@ -219,19 +242,19 @@ def render_rays(models,
         results[f'depth_{typ}'] = reduce(weights*z_vals, 'n1 n2 -> n1', 'sum')
         return
 
-    embedding_xyz, embedding_dir = embeddings['xyz'], embeddings['dir']
+    embedding_xyz, embedding_dir, embedding_outfits = embeddings['xyz'], embeddings['dir'], embeddings["outfit"][outfit_indices]
 
     # Decompose the inputs
     N_rays = rays.shape[0]
     rays_o, rays_d = rays[:, 0:3], rays[:, 3:6] # both (N_rays, 3)
-    near, far = rays[:, 6:7], rays[:, 7:8] # both (N_rays, 1)
+    near, far = rays[:, 6:7], rays[:, 7:8] # both (N_rays, 1) #depth bounds 
     # Embed direction
     dir_embedded = embedding_dir(kwargs.get('view_dir', rays_d))
 
     rays_o = rearrange(rays_o, 'n1 c -> n1 1 c')
     rays_d = rearrange(rays_d, 'n1 c -> n1 1 c')
 
-    # Sample depth points
+    #Step 1. Sample depth points
     z_steps = torch.linspace(0, 1, N_samples, device=rays.device)
     if not use_disp: # use linear sampling in depth space
         z_vals = near * (1-z_steps) + far * z_steps
@@ -249,6 +272,7 @@ def render_rays(models,
         perturb_rand = perturb * torch.rand_like(z_vals)
         z_vals = lower + (upper - lower) * perturb_rand
 
+    # 3D point Generation
     xyz_coarse = rays_o + rays_d * rearrange(z_vals, 'n1 n2 -> n1 n2 1')
 
     results = {}
