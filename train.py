@@ -22,7 +22,7 @@ from metrics import *
 # pytorch-lightning
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.loggers import TestTubeLogger
+from pytorch_lightning.loggers import TensorBoardLogger
 
 
 class NeRFSystem(LightningModule):
@@ -30,6 +30,7 @@ class NeRFSystem(LightningModule):
         super().__init__()
         self.hparams = hparams
 
+        # self.validation_step_outputs = []
         self.loss = loss_dict['nerfw'](coef=1)
 
         self.models_to_train = []
@@ -39,13 +40,17 @@ class NeRFSystem(LightningModule):
                            'dir': self.embedding_dir}
 
         if hparams.encode_a:
-            self.embedding_a = torch.nn.Embedding(hparams.N_vocab, hparams.N_a)
+            self.embedding_a = torch.nn.Embedding(hparams.N_vocab, hparams.N_a)  # 700 * 48
             self.embeddings['a'] = self.embedding_a
             self.models_to_train += [self.embedding_a]
-        if hparams.encode_t:
-            self.embedding_t = torch.nn.Embedding(hparams.N_vocab, hparams.N_tau)
-            self.embeddings['t'] = self.embedding_t
-            self.models_to_train += [self.embedding_t]
+        # if hparams.encode_t:
+        #     self.embedding_t = torch.nn.Embedding(hparams.N_vocab, hparams.N_tau)
+        #     self.embeddings['t'] = self.embedding_t
+        #     self.models_to_train += [self.embedding_t]
+        if hparams.encode_outfit:
+            self.embedding_outfit = torch.nn.Embedding(hparams.N_outfit, hparams.N_a)  # 2 * 48
+            self.embeddings['outfit'] = self.embedding_outfit
+            self.models_to_train += [self.embedding_outfit]
 
         self.nerf_coarse = NeRF('coarse',
                                 in_channels_xyz=6*hparams.N_emb_xyz+3,
@@ -189,24 +194,17 @@ def main(hparams):
                         mode='max',
                         save_top_k=-1)
 
-    logger = TestTubeLogger(save_dir="logs",
-                            name=hparams.exp_name,
-                            debug=False,
-                            create_git_tag=False,
-                            log_graph=False)
+    trainer = Trainer(
+        max_epochs=hparams.num_epochs,
+        callbacks=[checkpoint_callback],
+        logger=logger,
+        devices=hparams.num_gpus if hparams.num_gpus > 0 else 1,  # Default to 1 device if none specified
+        accelerator='gpu' if hparams.num_gpus > 0 else 'cpu',  # Choose between GPU and CPU
+        strategy='ddp' if hparams.num_gpus > 1 else 'auto',  # Use 'auto' for single device
+        num_sanity_val_steps=1,
+    )
 
-    trainer = Trainer(max_epochs=hparams.num_epochs,
-                      checkpoint_callback=checkpoint_callback,
-                      resume_from_checkpoint=hparams.ckpt_path,
-                      logger=logger,
-                      weights_summary=None,
-                      progress_bar_refresh_rate=hparams.refresh_every,
-                      gpus=hparams.num_gpus,
-                      accelerator='ddp' if hparams.num_gpus>1 else None,
-                      num_sanity_val_steps=1,
-                      benchmark=True,
-                      profiler="simple" if hparams.num_gpus==1 else None)
-
+    print("Starting training...")
     trainer.fit(system)
 
 
