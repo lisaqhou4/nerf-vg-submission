@@ -157,6 +157,7 @@ class NeRFSystem(LightningModule):
         rays = rays.squeeze() # (H*W, 3)
         rgbs = rgbs.squeeze() # (H*W, 3)
         ts = ts.squeeze() # (H*W)
+        # outfit_code = outfit_code.squeeze()
         results = self(rays, ts, outfit_code)
         loss_d = self.loss(results, rgbs)
         loss = sum(l for l in loss_d.values())
