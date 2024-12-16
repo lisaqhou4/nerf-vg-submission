@@ -36,7 +36,7 @@ class NeRF(nn.Module):
                  in_channels_xyz=63, in_channels_dir=27,
                  encode_appearance=False, in_channels_a=48,
                  encode_transient=False, in_channels_t=16,
-                 beta_min=0.03):
+                 beta_min=0.03, in_channels=64):
         """
         ---Parameters for the original NeRF---
         D: number of layers for density (sigma) encoder
@@ -53,6 +53,9 @@ class NeRF(nn.Module):
         encode_transient: whether to add transient encoding as input (NeRF-U)
         in_channels_t: transient embedding dimension. n^(tau) in the paper
         beta_min: minimum pixel color variance
+
+        -- Added Parameters for Nerf-VG --- 
+        in_channels: outfit embedding dimension
         """
         super().__init__()
         self.typ = typ
@@ -68,16 +71,19 @@ class NeRF(nn.Module):
         self.in_channels_t = in_channels_t
         self.beta_min = beta_min
 
+        self.in_channels_o = in_channels # outfit embedding 
+
         # xyz encoding layers
         for i in range(D):
             if i == 0:
-                layer = nn.Linear(in_channels_xyz, W)
+                layer = nn.Linear(in_channels_xyz+in_channels, W)
             elif i in skips:
-                layer = nn.Linear(W+in_channels_xyz, W)
+                layer = nn.Linear(W+in_channels_xyz+in_channels, W)
             else:
                 layer = nn.Linear(W, W)
             layer = nn.Sequential(layer, nn.ReLU(True))
             setattr(self, f"xyz_encoding_{i+1}", layer)
+
         self.xyz_encoding_final = nn.Linear(W, W)
 
         # direction encoding layers
@@ -88,6 +94,7 @@ class NeRF(nn.Module):
         self.static_sigma = nn.Sequential(nn.Linear(W, 1), nn.Softplus())
         self.static_rgb = nn.Sequential(nn.Linear(W//2, 3), nn.Sigmoid())
 
+        #do not apply to our case
         if self.encode_transient:
             # transient encoding layers
             self.transient_encoding = nn.Sequential(
@@ -100,13 +107,13 @@ class NeRF(nn.Module):
             self.transient_rgb = nn.Sequential(nn.Linear(W//2, 3), nn.Sigmoid())
             self.transient_beta = nn.Sequential(nn.Linear(W//2, 1), nn.Softplus())
 
-    def forward(self, x, sigma_only=False, output_transient=True):
+    def forward(self, x, sigma_only=False, output_transient=False):
         """
         Encodes input (xyz+dir) to rgb+sigma (not ready to render yet).
         For rendering this ray, please see rendering.py
 
         Inputs:
-            x: the embedded vector of position (+ direction + appearance + transient)
+            x: the embedded vector of position + +outfit + direction + appearance) //  transient
             sigma_only: whether to infer sigma only.
             has_transient: whether to infer the transient component.
 
@@ -127,29 +134,36 @@ class NeRF(nn.Module):
                                 self.in_channels_t], dim=-1)
         else:
             input_xyz, input_dir_a = \
-                torch.split(x, [self.in_channels_xyz,
+                torch.split(x, [self.in_channels_xyz+self.in_channels_o,
                                 self.in_channels_dir+self.in_channels_a], dim=-1)
             
 
-        xyz_ = input_xyz
+        xyz_ = input_xyz 
         for i in range(self.D):
             if i in self.skips:
                 xyz_ = torch.cat([input_xyz, xyz_], 1)
             xyz_ = getattr(self, f"xyz_encoding_{i+1}")(xyz_)
-
+        
+        # Predict static sigma (density)
         static_sigma = self.static_sigma(xyz_) # (B, 1)
         if sigma_only:
             return static_sigma
 
+        # Final xyz encoding
         xyz_encoding_final = self.xyz_encoding_final(xyz_)
+
+        # Direction + appearance encoding
         dir_encoding_input = torch.cat([xyz_encoding_final, input_dir_a], 1)
         dir_encoding = self.dir_encoding(dir_encoding_input)
+
+        # Predict static RGB (color)
         static_rgb = self.static_rgb(dir_encoding) # (B, 3)
         static = torch.cat([static_rgb, static_sigma], 1) # (B, 4)
 
         if not output_transient:
             return static
 
+        # ----- will not be used in our case -----
         transient_encoding_input = torch.cat([xyz_encoding_final, input_t], 1)
         transient_encoding = self.transient_encoding(transient_encoding_input)
         transient_sigma = self.transient_sigma(transient_encoding) # (B, 1)
