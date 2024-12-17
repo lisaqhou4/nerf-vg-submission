@@ -217,3 +217,4 @@ if __name__ == "__main__":
     if psnrs:
         mean_psnr = np.mean(psnrs)
         print(f'Mean PSNR : {mean_psnr:.2f}')
+    
