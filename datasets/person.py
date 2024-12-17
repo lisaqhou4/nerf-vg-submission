@@ -37,7 +37,6 @@ class PersonDataset(Dataset):
         assert img_wh[0] == img_wh[1], 'image width must equal image height!'
         self.img_wh = img_wh
         self.define_transforms()
-        print("in dataset")
         # assert set(perturbation).issubset({"color", "occ"}), \
         #     'Only "color" and "occ" perturbations are supported!'
         # self.perturbation = perturbation
@@ -140,45 +139,16 @@ class PersonDataset(Dataset):
                     }
 
         else: # create data for each image separately
-            # print("getitem, self.split != train", self.split)
+            
             frame = self.meta['frames'][idx]
             c2w = torch.FloatTensor(frame['transform_matrix'])[:3, :4]
             t = 0 # transient embedding index, 0 for val and test (no perturbation)
 
             img = Image.open(os.path.join(self.root_dir, frame["file_path"])).convert("RGB")
-
-            print("before resize: ", img.size)
-            print(self.img_wh)
-
-            # Resize the image
             img = img.resize(self.img_wh, Image.LANCZOS)
-            print("after resize: ", img.size)
-
-            # Apply transformation (to tensor with shape (3, H, W))
-            img = self.transform(img)
-            print("after transform: ", img.shape)
-
-            # Flatten the image and reshape
+            img = self.transform(img) # to tensor with shape (3, H, W))
             img = img.view(3, -1).permute(1, 0)  # Shape: (H*W, 3)
-            print("after view: ", img.shape)
-
-
-            # print(" before: ", img.size)
-            # print(self.img_wh)
-            # # if self.split == 'test_train' and idx != 0:
-            # #     t = idx
-            # #     img = add_perturbation(img, self.perturbation, idx)
-            # img = img.resize(self.img_wh, Image.LANCZOS)
-            # print("after resize: ", img.size)
-            # img = self.transform(img) # (4, H, W)
-            # print("after transform: ", img.shape)
-
             valid_mask = (img[-1]>0).flatten() # (H*W) valid color area
-            # img = img.view(4, -1).permute(1, 0) # (H*W, 4) RGBA
-
-            # print("after view: ", img.shape)
-            # img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
-            # print("final: ", img.shape)
 
             rays_o, rays_d = get_rays(self.directions, c2w)
 
