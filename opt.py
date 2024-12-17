@@ -38,8 +38,8 @@ def get_opts():
                         help='std dev of noise added to regularize sigma')
     
     # NeRF-VG parameters
-    parser.add_argument('--N_o', type=int, default=2,
-                        help='''number of outfits 
+    parser.add_argument('--N_o', type=int, default=48,
+                        help='''number of embeddings for outfit 
                                 in the dataset for nn.Embedding''')
 
     # NeRF-W parameters
