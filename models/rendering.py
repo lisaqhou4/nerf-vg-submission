@@ -108,9 +108,11 @@ def render_rays(models,
         #TO-DO modification for our nerf model that have variable geometry
         if typ=='coarse' and test_time: #test time, only infer sigma
             #TO-DO do i add outfit embedding here?
+            outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             for i in range(0, B, chunk):
-                xyz_embedded = embedding_xyz(xyz_[i:i+chunk])
-                out_chunks += [model(xyz_embedded, sigma_only=True)]
+                # xyz_embedded = embedding_xyz(xyz_[i:i+chunk])
+                inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk]]
+                out_chunks += [model(inputs, sigma_only=True)]
             out = torch.cat(out_chunks, 0)
             
             static_sigmas = rearrange(out, '(n1 n2) 1 -> n1 n2', n1=N_rays, n2=N_samples_)
