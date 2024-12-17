@@ -8,25 +8,25 @@ from torchvision import transforms as T
 
 from .ray_utils import *
 
-def add_perturbation(img, perturbation, seed):
-    if 'color' in perturbation:
-        np.random.seed(seed)
-        img_np = np.array(img)/255.0
-        s = np.random.uniform(0.8, 1.2, size=3)
-        b = np.random.uniform(-0.2, 0.2, size=3)
-        img_np[..., :3] = np.clip(s*img_np[..., :3]+b, 0, 1)
-        img = Image.fromarray((255*img_np).astype(np.uint8))
-    if 'occ' in perturbation:
-        draw = ImageDraw.Draw(img)
-        np.random.seed(seed)
-        left = np.random.randint(200, 400)
-        top = np.random.randint(200, 400)
-        for i in range(10):
-            np.random.seed(10*seed+i)
-            random_color = tuple(np.random.choice(range(256), 3))
-            draw.rectangle(((left+20*i, top), (left+20*(i+1), top+200)),
-                            fill=random_color)
-    return img
+# def add_perturbation(img, perturbation, seed):
+#     if 'color' in perturbation:
+#         np.random.seed(seed)
+#         img_np = np.array(img)/255.0
+#         s = np.random.uniform(0.8, 1.2, size=3)
+#         b = np.random.uniform(-0.2, 0.2, size=3)
+#         img_np[..., :3] = np.clip(s*img_np[..., :3]+b, 0, 1)
+#         img = Image.fromarray((255*img_np).astype(np.uint8))
+#     if 'occ' in perturbation:
+#         draw = ImageDraw.Draw(img)
+#         np.random.seed(seed)
+#         left = np.random.randint(200, 400)
+#         top = np.random.randint(200, 400)
+#         for i in range(10):
+#             np.random.seed(10*seed+i)
+#             random_color = tuple(np.random.choice(range(256), 3))
+#             draw.rectangle(((left+20*i, top), (left+20*(i+1), top+200)),
+#                             fill=random_color)
+#     return img
 
 
 class PersonDataset(Dataset):
@@ -38,11 +38,11 @@ class PersonDataset(Dataset):
         self.img_wh = img_wh
         self.define_transforms()
 
-        assert set(perturbation).issubset({"color", "occ"}), \
-            'Only "color" and "occ" perturbations are supported!'
-        self.perturbation = perturbation
-        if self.split == 'train':
-            print(f'add {self.perturbation} perturbation!')
+        # assert set(perturbation).issubset({"color", "occ"}), \
+        #     'Only "color" and "occ" perturbations are supported!'
+        # self.perturbation = perturbation
+        # if self.split == 'train':
+        #     print(f'add {self.perturbation} perturbation!')
         self.read_meta()
         self.white_back = True
 
@@ -85,9 +85,9 @@ class PersonDataset(Dataset):
                 image_path = os.path.join(self.root_dir, frame["file_path"])
                 # print("image_path from person dataset:", image_path)
                 img = Image.open(image_path)
-                if t != 0: # perturb everything except the first image.
-                           # cf. Section D in the supplementary material
-                    img = add_perturbation(img, self.perturbation, t)
+                # if t != 0: # perturb everything except the first image.
+                #            # cf. Section D in the supplementary material
+                #     img = add_perturbation(img, self.perturbation, t)
 
                 img = img.resize(self.img_wh, Image.LANCZOS)
                 img = self.transform(img) # (4, h, w)
@@ -141,9 +141,9 @@ class PersonDataset(Dataset):
             img = img.resize(self.img_wh, Image.LANCZOS)
             img = self.transform(img) # to tensor with shape (3, H, W))
             img = img.view(3, -1).permute(1, 0)  # Shape: (H*W, 3)
-            if self.split == 'test_train' and idx != 0:
-                t = idx
-                img = add_perturbation(img, self.perturbation, idx)
+            # if self.split == 'test_train' and idx != 0:
+            #     t = idx
+            #     img = add_perturbation(img, self.perturbation, idx)
 
             rays_o, rays_d = get_rays(self.directions, c2w)
 
@@ -159,15 +159,15 @@ class PersonDataset(Dataset):
                       'c2w': c2w,
                       }
 
-            if self.split == 'test_train' and self.perturbation:
-                 # append the original (unperturbed) image
-                img = Image.open(os.path.join(self.root_dir, frame["file_path"])).convert("RGB")
-                img = img.resize(self.img_wh, Image.LANCZOS)
-                img = self.transform(img) # (4, H, W)
-                valid_mask = (img[-1]>0).flatten() # (H*W) valid color area
-                img = img.view(3, -1).permute(1, 0) # (H*W, 4) RGBA
-                # img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
-                sample['original_rgbs'] = img
-                sample['original_valid_mask'] = valid_mask
+            # if self.split == 'test_train' and self.perturbation:
+            #      # append the original (unperturbed) image
+            #     img = Image.open(os.path.join(self.root_dir, frame["file_path"])).convert("RGB")
+            #     img = img.resize(self.img_wh, Image.LANCZOS)
+            #     img = self.transform(img) # (4, H, W)
+            #     valid_mask = (img[-1]>0).flatten() # (H*W) valid color area
+            #     img = img.view(3, -1).permute(1, 0) # (H*W, 4) RGBA
+            #     # img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
+            #     sample['original_rgbs'] = img
+            #     sample['original_valid_mask'] = valid_mask
 
         return sample
