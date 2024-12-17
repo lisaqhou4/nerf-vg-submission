@@ -110,8 +110,11 @@ def render_rays(models,
             #TO-DO do i add outfit embedding here?
             outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             for i in range(0, B, chunk):
-                # xyz_embedded = embedding_xyz(xyz_[i:i+chunk])
-                inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk]]
+                xyz_embedded = embedding_xyz(xyz_[i:i+chunk])  # Shape: [chunk, xyz_dim]
+                outfit_chunk = outfit_embedded_[i:i+chunk]     # Shape: [chunk, outfit_dim]
+                
+                # Concatenate along the feature dimension (-1)
+                inputs = torch.cat([xyz_embedded, outfit_chunk], dim=-1)
                 out_chunks += [model(inputs, sigma_only=True)]
             out = torch.cat(out_chunks, 0)
             
