@@ -40,7 +40,7 @@ class NerfWLoss(nn.Module):
         ret['c_l'] = 0.5 * ((inputs['rgb_coarse']-targets)**2).mean()
         if 'rgb_fine' in inputs:
             if 'beta' not in inputs: # no transient head, normal MSE loss
-                print("beta not in inputs, use normal MSE loss")
+                # print("beta not in inputs, use normal MSE loss")
                 ret['f_l'] = 0.5 * ((inputs['rgb_fine']-targets)**2).mean()
             else:
                 ret['f_l'] = \

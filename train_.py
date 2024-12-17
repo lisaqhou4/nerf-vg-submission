@@ -79,17 +79,17 @@ class NeRFSystem(LightningModule):
         """Do batched inference on rays using chunk."""
         B = rays.shape[0]
         results = defaultdict(list)
-        print("shape of rays:", rays.shape)
-        print("shape of ts:", ts.shape)
-        print("shape of outfit_code:", outfit_code.shape)
+        # print("shape of rays:", rays.shape)
+        # print("shape of ts:", ts.shape)
+        # print("shape of outfit_code:", outfit_code.shape)
 
         for i in range(0, B, self.hparams.chunk):
-            print("i, i+self.hparams.chunk, B:", i, i+self.hparams.chunk, B)
+            # print("i, i+self.hparams.chunk, B:", i, i+self.hparams.chunk, B)
             
-            print("outfit_code in the train.forward:", outfit_code[i:i+self.hparams.chunk])
-            print("shape of outfit_code in the train.forward:", outfit_code[i:i+self.hparams.chunk].shape)
+            # print("outfit_code in the train.forward:", outfit_code[i:i+self.hparams.chunk])
+            # print("shape of outfit_code in the train.forward:", outfit_code[i:i+self.hparams.chunk].shape)
             outfit_code = outfit_code.squeeze(0)
-            print("shape of outfit_code in the train.forward after squeeze:", outfit_code[i:i+self.hparams.chunk].shape)
+            # print("shape of outfit_code in the train.forward after squeeze:", outfit_code[i:i+self.hparams.chunk].shape)
             rendered_ray_chunks = \
                 render_rays(self.models,
                             self.embeddings,
@@ -122,9 +122,9 @@ class NeRFSystem(LightningModule):
             kwargs['img_wh'] = tuple(self.hparams.img_wh)
             kwargs['perturbation'] = self.hparams.data_perturb
         print("get train dataset")
-        self.train_dataset = dataset(split='train', **kwargs)
+        self.train_dataset = dataset(split='train', img_wh=tuple(self.hparams.img_wh), **kwargs)
         print("get val dataset")
-        self.val_dataset = dataset(split='val', **kwargs)
+        self.val_dataset = dataset(split='val', img_wh=tuple(self.hparams.img_wh), **kwargs)
 
     def configure_optimizers(self):
         self.optimizer = get_optimizer(self.hparams, self.models_to_train)
@@ -148,10 +148,10 @@ class NeRFSystem(LightningModule):
                           pin_memory=True)
     
     def training_step(self, batch, batch_nb):
-        print("In the Training Step")
+        # print("In the Training Step")
         rays, rgbs, ts, outfit_code = batch['rays'], batch['rgbs'], batch['ts'], batch['outfit_code']
-        print("outfit_code:", outfit_code)
-        print("type of outfit_code:", type(outfit_code))
+        # print("outfit_code:", outfit_code)
+        # print("type of outfit_code:", type(outfit_code))
         results = self(rays, ts, outfit_code)
         loss_d = self.loss(results, rgbs)
         loss = sum(l for l in loss_d.values())
@@ -169,17 +169,19 @@ class NeRFSystem(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_nb):
-        print("In the Validation Step")
+        # print("In the Validation Step")
         rays, rgbs, ts, outfit_code = batch['rays'], batch['rgbs'], batch['ts'], batch['outfit_code']
+        print("rays shape in validation_step", rays.shape)
+        print("rgbs shape in validation_step", rgbs.shape)
         print("outfit_code shape in validatiaon_step:", outfit_code.shape)
-        print(batch)
+        # print(batch)
         rays = rays.squeeze() # (H*W, 3)
         rgbs = rgbs.squeeze() # (H*W, 3)
         ts = ts.squeeze() # (H*W)
         results = self(rays, ts, outfit_code)
-        print("shape of results['rgb_coarse'] in the validation_step:", results['rgb_coarse'].shape)
-        print("shape of rgbs in the validation_step:", rgbs.shape)
-        print("shape of results['rgb_fine'] in the validation_step:", results['rgb_fine'].shape)
+        # print("shape of results['rgb_coarse'] in the validation_step:", results['rgb_coarse'].shape)
+        # print("shape of rgbs in the validation_step:", rgbs.shape)
+        # print("shape of results['rgb_fine'] in the validation_step:", results['rgb_fine'].shape)
         loss_d = self.loss(results, rgbs)
         loss = sum(l for l in loss_d.values())
         log = {'val_loss': loss}
