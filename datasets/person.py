@@ -89,34 +89,25 @@ class PersonDataset(Dataset):
 
                 img = img.resize(self.img_wh, Image.LANCZOS)
                 img = self.transform(img) # (4, h, w)
-                img = img.view(4, -1).permute(1, 0) # (h*w, 4) RGBA
-                img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
+                img = img.view(3, -1).permute(1, 0) # (h*w, 4) RGB
+                # img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
                 self.all_rgbs += [img]
                 
                 rays_o, rays_d = get_rays(self.directions, c2w) # both (h*w, 3)
-            #     rays_t = t * torch.ones(len(rays_o), 1)
+                rays_t = t * torch.ones(len(rays_o), 1)
 
-            #     self.all_rays += [torch.cat([rays_o, rays_d,
-            #                                  self.near*torch.ones_like(rays_o[:, :1]),
-            #                                  self.far*torch.ones_like(rays_o[:, :1]),
-            #                                  rays_t],
-            #                                  1)] # (h*w, 8)
-
-            # self.all_rays = torch.cat(self.all_rays, 0) # (len(rgbs.meta['frames])*h*w, 3)
-            # self.all_rgbs = torch.cat(self.all_rgbs, 0) # (len(self.meta['frames])*h*w, 3)
-
-                rays = torch.cat([
-                    rays_o,
-                    rays_d,
+                rays = torch.cat([rays_o, rays_d,
                     self.near * torch.ones_like(rays_o[:, :1]),  # Near bounds
-                    self.far * torch.ones_like(rays_o[:, :1])   # Far bounds
-                ], 1)  # (H*W, 8)
+                    self.far * torch.ones_like(rays_o[:, :1]), # Far bounds
+                    rays_t ],
+                    1)  # (H*W, 9)
+                
                 self.all_rays.append(rays)
-                outfit_code_tensor = outfit_code * torch.ones(len(rays), 1, dtype=torch.long)
+                outfit_code_tensor = outfit_code * torch.ones(len(rays), dtype=torch.long)
                 self.all_outfit_codes.append(outfit_code_tensor)
 
             # Concatenate all rays and RGB values
-            self.all_rays = torch.cat(self.all_rays, 0)  # (N_images*H*W, 8)
+            self.all_rays = torch.cat(self.all_rays, 0)  # (N_images*H*W, 9)
             self.all_rgbs = torch.cat(self.all_rgbs, 0)  # (N_images*H*W, 3)
             self.all_outfit_codes = torch.cat(self.all_outfit_codes, 0)  # (N_images*H*W, 1)
 
@@ -135,7 +126,7 @@ class PersonDataset(Dataset):
             sample = {'rays': self.all_rays[idx, :8],
                       'ts': self.all_rays[idx, 8].long(),
                       'rgbs': self.all_rgbs[idx],
-                      'outfit_code': self.all_outfit_codes[idx] # (1,)
+                      'outfit_code': self.all_outfit_codes[idx].squeeze(-1)
                     }
 
         else: # create data for each image separately
@@ -148,7 +139,7 @@ class PersonDataset(Dataset):
             img = img.resize(self.img_wh, Image.LANCZOS)
             img = self.transform(img) # to tensor with shape (3, H, W))
             img = img.view(3, -1).permute(1, 0)  # Shape: (H*W, 3)
-            valid_mask = (img[-1]>0).flatten() # (H*W) valid color area
+            
 
             rays_o, rays_d = get_rays(self.directions, c2w)
 
@@ -162,7 +153,7 @@ class PersonDataset(Dataset):
                       'rgbs': img,
                       'outfit_code': frame['outfit_code'] * torch.ones(len(rays), dtype=torch.long),
                       'c2w': c2w,
-                      'valid_mask': valid_mask}
+                      }
 
             # if self.split == 'test_train' and self.perturbation:
             #      # append the original (unperturbed) image
