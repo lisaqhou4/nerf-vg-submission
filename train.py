@@ -48,7 +48,7 @@ class NeRFSystem(LightningModule):
         #     self.embeddings['t'] = self.embedding_t
         #     self.models_to_train += [self.embedding_t]
         if hparams.encode_outfit:
-            self.embedding_outfit = torch.nn.Embedding(hparams.N_outfit, hparams.N_a)  # 2 * 48
+            self.embedding_outfit = torch.nn.Embedding(hparams.N_outfit, hparams.N_o)  # 2 * 48
             self.embeddings['outfit'] = self.embedding_outfit
             self.models_to_train += [self.embedding_outfit]
 
@@ -66,7 +66,7 @@ class NeRFSystem(LightningModule):
                                   encode_transient=hparams.encode_t,
                                   in_channels_t=hparams.N_tau,
                                   beta_min=hparams.beta_min,
-                                  encode_outfit=hparams.encode_outfit, in_channels_o=hparams.N_a)
+                                  encode_outfit=hparams.encode_outfit, in_channels_o=hparams.N_o)
             self.models['fine'] = self.nerf_fine
         self.models_to_train += [self.models]
 

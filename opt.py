@@ -36,6 +36,11 @@ def get_opts():
                         help='factor to perturb depth sampling points')
     parser.add_argument('--noise_std', type=float, default=1.0,
                         help='std dev of noise added to regularize sigma')
+    
+    # NeRF-VG parameters
+    parser.add_argument('--N_o', type=int, default=2,
+                        help='''number of outfits 
+                                in the dataset for nn.Embedding''')
 
     # NeRF-W parameters
     parser.add_argument('--N_vocab', type=int, default=700,
