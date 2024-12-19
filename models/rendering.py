@@ -78,7 +78,7 @@ def render_rays(models,
         test_time: whether it is test (inference only) or not. If True, it will not do inference
                    on coarse rgb to save time
      ------- added -------------
-        outfit_embeddings: the outfit embedding corresponding to current batch
+        outfit_code: the outfit code to index corresponding to current batch
     Outputs:
         result: dictionary containing final rgb and depth maps for coarse and fine models
     """
@@ -105,15 +105,14 @@ def render_rays(models,
         B = xyz_.shape[0]
         out_chunks = []
 
-        #TO-DO modification for our nerf model that have variable geometry
         if typ=='coarse' and test_time: #test time, only infer sigma
-            #TO-DO do i add outfit embedding here?
+            #add outfit embedding 
             outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             for i in range(0, B, chunk):
                 xyz_embedded = embedding_xyz(xyz_[i:i+chunk])  # Shape: [chunk, xyz_dim]
                 outfit_chunk = outfit_embedded_[i:i+chunk]     # Shape: [chunk, outfit_dim]
                 
-                # Concatenate along the feature dimension (-1)
+                # concatenate along the feature dimension (-1)
                 inputs = torch.cat([xyz_embedded, outfit_chunk], dim=-1)
                 out_chunks += [model(inputs, sigma_only=True)]
             out = torch.cat(out_chunks, 0)
@@ -122,31 +121,18 @@ def render_rays(models,
 
         else: # infer rgb and sigma and others
             dir_embedded_ = repeat(dir_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            # print("shape of embedding_outfits", embedding_outfits.shape)
             outfit_embedded_ = repeat(embedding_outfits, 'n1 c -> (n1 n2) c', n2=N_samples_)
             # create other necessary inputs
             if model.encode_appearance:
                 a_embedded_ = repeat(a_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
-            if output_transient:
-                t_embedded_ = repeat(t_embedded, 'n1 c -> (n1 n2) c', n2=N_samples_)
             
             for i in range(0, B, chunk):
                 # inputs including outfit embedding
                 inputs = [embedding_xyz(xyz_[i:i+chunk]), outfit_embedded_[i:i+chunk], dir_embedded_[i:i+chunk]]
 
-                # print("shape of xyz_embedded:", embedding_xyz(xyz_[i:i+chunk]).shape)
-                # print("shape of outfit_embedded_:", outfit_embedded_.shape)
-                # print("shape of dir_embedded_:", dir_embedded_[i:i+chunk].shape)
-                
                 # additional inputs for NeRF-W
                 if model.encode_appearance:
                     inputs += [a_embedded_[i:i+chunk]]
-                    # print("a_embedded_:", a_embedded_[i:i+chunk])
-                    # print("shape of a_embedded_:", a_embedded_[i:i+chunk].shape)
-                if output_transient:
-                    # print("t_embedded_:", t_embedded_[i:i+chunk])
-                    # print("shape of t_embedded_:", t_embedded_[i:i+chunk].shape)
-                    inputs += [t_embedded_[i:i+chunk]]
                 out_chunks += [model(torch.cat(inputs, 1), output_transient=output_transient)]
 
             #reshape outputs
@@ -157,12 +143,7 @@ def render_rays(models,
             static_rgbs = out[..., :3] # (N_rays, N_samples_, 3)
             static_sigmas = out[..., 3] # (N_rays, N_samples_)
 
-            if output_transient:
-                transient_rgbs = out[..., 4:7]
-                transient_sigmas = out[..., 7]
-                transient_betas = out[..., 8]
-
-        # Convert these values using volume rendering
+        # convert these values using volume rendering
         deltas = z_vals[:, 1:] - z_vals[:, :-1] # (N_rays, N_samples_-1)
         delta_inf = 1e2 * torch.ones_like(deltas[:, :1]) # (N_rays, 1) the last delta is infinity
         deltas = torch.cat([deltas, delta_inf], -1)  # (N_rays, N_samples_)
@@ -170,104 +151,41 @@ def render_rays(models,
         # calculate opacities
         # the alpah function which is alpha_i(x) = 1 - exp(-x)
         # static sigmas is the  density sigma, deltas is the distance between samples
-        if output_transient:
-            static_alphas = 1-torch.exp(-deltas*static_sigmas)
-            transient_alphas = 1-torch.exp(-deltas*transient_sigmas)
-            alphas = 1-torch.exp(-deltas*(static_sigmas+transient_sigmas))
-        else:
-#             noise = torch.randn_like(static_sigmas) * noise_std
-            alphas = 1-torch.exp(-deltas*static_sigmas)
+        noise = torch.randn_like(static_sigmas) * noise_std
+        alphas = 1-torch.exp(-deltas*static_sigmas)
 
         # calculate transmittance
         alphas_shifted = \
             torch.cat([torch.ones_like(alphas[:, :1]), 1-alphas], -1) # [1, 1-a1, 1-a2, ...]
         transmittance = torch.cumprod(alphas_shifted[:, :-1], -1) # [1, 1-a1, (1-a1)(1-a2), ...]
 
-        if output_transient:
-            static_weights = static_alphas * transmittance
-            transient_weights = transient_alphas * transmittance
 
         weights = alphas * transmittance
         weights_sum = reduce(weights, 'n1 n2 -> n1', 'sum')
 
         results[f'weights_{typ}'] = weights
         results[f'opacity_{typ}'] = weights_sum
-        if output_transient:
-            results['transient_sigmas'] = transient_sigmas
+
         if test_time and typ == 'coarse':
             return
 
-
-        if output_transient:
-            static_rgb_map = reduce(rearrange(static_weights, 'n1 n2 -> n1 n2 1')*static_rgbs,
-                                    'n1 n2 c -> n1 c', 'sum')
-            if white_back:
-                static_rgb_map += 1-rearrange(weights_sum, 'n -> n 1')
-            
-            transient_rgb_map = \
-                reduce(rearrange(transient_weights, 'n1 n2 -> n1 n2 1')*transient_rgbs,
-                       'n1 n2 c -> n1 c', 'sum')
-            #If transient fields exist, calculate the uncertainty (beta) for transient components by summing weighted uncertainties:
-            results['beta'] = reduce(transient_weights*transient_betas, 'n1 n2 -> n1', 'sum')
-            # Add beta_min AFTER the beta composition. Different from eq 10~12 in the paper.
-            # See "Notes on differences with the paper" in README.
-            results['beta'] += model.beta_min
-            
-            # the rgb maps here are when both fields exist
-            results['_rgb_fine_static'] = static_rgb_map
-            results['_rgb_fine_transient'] = transient_rgb_map
-            results['rgb_fine'] = static_rgb_map + transient_rgb_map
-
-            if test_time:
-                # Compute also static and transient rgbs when only one field exists.
-                # The result is different from when both fields exist, since the transimttance
-                # will change.
-                static_alphas_shifted = \
-                    torch.cat([torch.ones_like(static_alphas[:, :1]), 1-static_alphas], -1)
-                static_transmittance = torch.cumprod(static_alphas_shifted[:, :-1], -1)
-                static_weights_ = static_alphas * static_transmittance
-                static_rgb_map_ = \
-                    reduce(rearrange(static_weights_, 'n1 n2 -> n1 n2 1')*static_rgbs,
-                           'n1 n2 c -> n1 c', 'sum')
-                if white_back:
-                    static_rgb_map_ += 1-rearrange(weights_sum, 'n -> n 1')
-                results['rgb_fine_static'] = static_rgb_map_
-                results['depth_fine_static'] = \
-                    reduce(static_weights_*z_vals, 'n1 n2 -> n1', 'sum')
-
-                transient_alphas_shifted = \
-                    torch.cat([torch.ones_like(transient_alphas[:, :1]), 1-transient_alphas], -1)
-                transient_transmittance = torch.cumprod(transient_alphas_shifted[:, :-1], -1)
-                transient_weights_ = transient_alphas * transient_transmittance
-                results['rgb_fine_transient'] = \
-                    reduce(rearrange(transient_weights_, 'n1 n2 -> n1 n2 1')*transient_rgbs,
-                           'n1 n2 c -> n1 c', 'sum')
-                results['depth_fine_transient'] = \
-                    reduce(transient_weights_*z_vals, 'n1 n2 -> n1', 'sum')
-        else: # no transient field
-            rgb_map = reduce(rearrange(weights, 'n1 n2 -> n1 n2 1')*static_rgbs,
+        rgb_map = reduce(rearrange(weights, 'n1 n2 -> n1 n2 1')*static_rgbs,
                              'n1 n2 c -> n1 c', 'sum')
-            if white_back:
-                rgb_map += 1-rearrange(weights_sum, 'n -> n 1')
-            results[f'rgb_{typ}'] = rgb_map
+        if white_back:
+            rgb_map += 1-rearrange(weights_sum, 'n -> n 1')
+        results[f'rgb_{typ}'] = rgb_map
 
         results[f'depth_{typ}'] = reduce(weights*z_vals, 'n1 n2 -> n1', 'sum')
         return
 
-    # print("outfit_code:", outfit_code)
-    # print("outfit_code type:", type(outfit_code))
-    # print("outfit_code shape:", outfit_code.shape)
-    # print("shape of embeddings[outfit](outfit_code)", embeddings["outfit"](outfit_code).shape)
     outfit_code = outfit_code.squeeze()
-    # print("outfit_code shape after squeeze:", outfit_code.shape)
-    # print("shape of embeddings[outfit](outfit_code) after squeeze", embeddings["outfit"](outfit_code).shape)
     embedding_xyz, embedding_dir, embedding_outfits = embeddings['xyz'], embeddings['dir'], embeddings["outfit"](outfit_code)
 
-    # Decompose the inputs
+    # decompose the inputs
     N_rays = rays.shape[0]
     rays_o, rays_d = rays[:, 0:3], rays[:, 3:6] # both (N_rays, 3)
     near, far = rays[:, 6:7], rays[:, 7:8] # both (N_rays, 1) #depth bounds 
-    # Embed direction
+    # embed direction
     dir_embedded = embedding_dir(kwargs.get('view_dir', rays_d))
 
     rays_o = rearrange(rays_o, 'n1 c -> n1 1 c')
@@ -313,12 +231,6 @@ def render_rays(models,
                 a_embedded = kwargs['a_embedded']
             else:
                 a_embedded = embeddings['a'](ts)
-        output_transient = kwargs.get('output_transient', True) and model.encode_transient
-        if output_transient:
-            if 't_embedded' in kwargs:
-                t_embedded = kwargs['t_embedded']
-            else:
-                t_embedded = embeddings['t'](ts)
         
         inference(results, model, xyz_fine, z_vals, test_time, **kwargs)
 
